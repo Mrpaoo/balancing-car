@@ -139,7 +139,6 @@ int main(void)
   /* USER CODE BEGIN 2 */
   LCD_Init();
   LCD_Clear(BLACK);
-  LCD_ShowString(10, 10, "LCD OK", WHITE, BLACK);
 
   System_Init();
   /* USER CODE END 2 */
