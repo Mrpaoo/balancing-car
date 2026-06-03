@@ -27,15 +27,17 @@
 #define MOTOR2_OUTPUT_MIN      -50.0f
 
 // ========== 角度环 PID 参数 ==========
-#define ANGLE_Kp                1.0f
+// 角度PD直接输出PWM占空比(%), 不再经过速度环
+// D项直接拿gyro_dps(陀螺仪角速度), 延迟<1ms
+#define ANGLE_Kp                10.0f
 #define ANGLE_Ki                0.0f
-#define ANGLE_Kd                 0.02f
-#define ANGLE_INTEGRAL_LIMIT   300.0f
-#define ANGLE_OUTPUT_MAX       50.0f   // 输出：速度设定点 (encoder counts/s)
-#define ANGLE_OUTPUT_MIN      -50.0f
+#define ANGLE_Kd                6.0f
+#define ANGLE_INTEGRAL_LIMIT   10.0f
+#define ANGLE_OUTPUT_MAX       80.0f   // 平衡PWM占空比上限(%)
+#define ANGLE_OUTPUT_MIN      -80.0f
 
-#define MAX_SPEED_SP		1000.0f
-#define SPEED_SP_GAIN		(float)(MAX_SPEED_SP/ANGLE_OUTPUT_MAX)
+// 速度指令转换 (仅REMOTE/TRACKING模式用)
+#define SPEED_CMD_GAIN		20.0f
 
 // ========== 通用 PID 配置 ==========
 #define PID_DEFAULT_INTEGRAL_LIMIT   100.0f

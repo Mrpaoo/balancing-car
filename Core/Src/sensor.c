@@ -70,7 +70,7 @@ static void ComplementaryFilter(MPU6050Data_T *mpu, float dt)
 	                  * 180.0f / (float)M_PI;
 
 	/* fuse: trust gyro 98%, accel 2% */
-	pitch_filtered = 0.95f * pitch_gyro + 0.05f * pitch_accel;
+	pitch_filtered = 0.985f * pitch_gyro + 0.015f * pitch_accel;
 }
 
 #define SENSOR_DT  0.005f   /* TIM2 period = 5 ms */
@@ -85,7 +85,8 @@ void collect_data(SensorData_t* data){
 void Sensor_Update(SensorData_t* data, float dt){
 	MPU6050_read(&data->mpu);
 	ComplementaryFilter(&data->mpu, dt);
-	data->pitch = pitch_filtered;
+	data->pitch    = pitch_filtered;
+	data->gyro_dps = (float)data->mpu.gyro_Y / GYRO_LSB_PER_DPS - gyro_bias_Y;
 }
 
 static void MPU6050_read(MPU6050Data_T* data){

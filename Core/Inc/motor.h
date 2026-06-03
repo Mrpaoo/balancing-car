@@ -13,7 +13,7 @@
 #include"pid.h"
 
 /*max delta for clamp() output*/
-#define DU_MAX	100
+#define DU_MAX	50
 #define PWM_PERIOD  999
 
 typedef enum{

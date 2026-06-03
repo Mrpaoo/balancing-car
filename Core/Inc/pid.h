@@ -8,6 +8,7 @@
 #ifndef INC_PID_H_
 #define INC_PID_H_
 
+#include <stdint.h>
 
 typedef struct Pid_t{
 	/* ===== Config (read-only after init) ===== */
@@ -20,6 +21,10 @@ typedef struct Pid_t{
 	    float prev_error;
 	    float der_filtered;  /* low-pass filtered derivative */
 	    float output;	/*only suggestion, not real output motor drive*/
+
+	    /* ===== External derivative source ===== */
+	    uint8_t use_direct_deriv;
+	    float   direct_deriv;  /* pre-computed d(error)/dt, e.g. -gyro_dps */
 
 }Pid_t;
 
