@@ -5,6 +5,8 @@
 #include<stdio.h>
 #include"global_def.h"
 #include"pidConfig.h"
+#include"lcd.h"
+
 
 /*==========Global var Define===========*/
 static volatile uint8_t g_enable=0;
@@ -76,6 +78,28 @@ static void PWM_Write(const Motor_Unit *m, int32_t duty)
 	uint32_t compare = duty_to_compare(duty, m->hw.pwm_period);
 	__HAL_TIM_SET_COMPARE(m->hw.htim_pwm, m->hw.pwm_ch, compare);
 }
+
+static void Motor_Update(Robot_Ctx *r,
+                  float spL, float measL,
+                  float spR, float measR,
+                  float dt)
+{
+	Motor_Ctrl *cL = &r->left.ctrl;
+	Motor_Ctrl *cR = &r->right.ctrl;
+
+	int32_t targetL = (int32_t)lroundf(Pid_Update(&cL->pid, spL, measL, dt));
+	int32_t targetR = (int32_t)lroundf(Pid_Update(&cR->pid, spR, measR, dt));
+
+	int32_t outL = clamp(targetL, cL->prev_out);
+	int32_t outR = clamp(targetR, cR->prev_out);
+
+	cL->prev_out = outL;
+	cR->prev_out = outR;
+
+
+	PWM_Write(&r->left,outL);
+	PWM_Write(&r->right,outR);
+}
 /*==========Motor Driver End============*/
 
 
@@ -108,8 +132,16 @@ static void Motor_Task(void* arg){
 			taskEXIT_CRITICAL();
 			Sensor_Update(&data, dt);
 
+			/* LCD debug: print pitch every 20 cycles */
+//			static uint32_t lcd_tick = 0;
+//			if (++lcd_tick >= 20) {
+//				lcd_tick = 0;
+//				char buf[32];
+//				sprintf(buf, "Pitch:%.1f", data.pitch);
+//				LCD_ShowString(0, 0, buf, WHITE, BLACK);
+//			}
 
-			/* encoder delta with wrap handling */
+			/* encoder delta with wrap handling (MPU6050 + pitch already in g_sensor_data from ISR) */
 			int16_t dL = (int16_t)(data.enc.enc_L - prev_enc_L);
 			int16_t dR = (int16_t)(data.enc.enc_R - prev_enc_R);
 			float raw_measL = (float)dL / dt;
@@ -118,13 +150,13 @@ static void Motor_Task(void* arg){
 			prev_enc_R = data.enc.enc_R;
 
 			/* low-pass filter to suppress 1-count jitter at 200 Hz */
-			#define SPEED_LPF_ALPHA  0.03f
+			#define SPEED_LPF_ALPHA  0.1f
 			static float measL = 0.0f, measR = 0.0f;
 			measL += SPEED_LPF_ALPHA * (raw_measL - measL);
 			measR += SPEED_LPF_ALPHA * (raw_measR - measR);
 
 			/* CS100A trigger: fire every 60ms */
-			if (++cs100a_tick >= 20) {
+			if (++cs100a_tick >= 6) {
 				cs100a_tick = 0;
 				CS100A_Trigger();
 			}
@@ -147,57 +179,49 @@ static void Motor_Task(void* arg){
 				g_wifi_cmd.mode_request = 0;
 			}
 
-			/* Angle PD → PWM directly. Speed loop only for REMOTE/TRACKING trim. */
-			float speed_sp = 0.0f;
+			/* Per-mode command logic */
 			switch(state){
 			case IDLE:
 				break;
 			case BALANCE:
-				g_angle_pid.direct_deriv = data.gyro_dps;
 				cmd.v = Pid_Update(&g_angle_pid, 0.0f, data.pitch, dt);
 				break;
 			case REMOTE:
-				g_angle_pid.direct_deriv = -data.gyro_dps;
-				cmd.v    = Pid_Update(&g_angle_pid, 0.0f, data.pitch, dt);
-				speed_sp = (float)g_wifi_cmd.v * SPEED_CMD_GAIN;
+				cmd.v    = Pid_Update(&g_angle_pid, 0.0f, data.pitch, dt)
+				         + g_wifi_cmd.v;
 				cmd.turn = g_wifi_cmd.turn;
 				break;
 			case TRACKING:
-				g_angle_pid.direct_deriv = -data.gyro_dps;
 				cmd.v    = Pid_Update(&g_angle_pid, 1.0f, data.pitch, dt);
 				cmd.turn = g_vision_cmd.turn;
 				if (distance_mm > 0 && distance_mm < 200.0f) {
-					speed_sp = 0.0f;
+					cmd.v = 0;   /* obstacle brake: 20cm */
 				}
 				break;
 			}
 
-			int32_t balance = (int32_t)lroundf(cmd.v);
-			int32_t trimL = 0, trimR = 0;
+			/* translate to per-wheel speed and drive */
+			float spL = (float)(cmd.v - cmd.turn)*SPEED_SP_GAIN;
+			float spR = (float)(cmd.v + cmd.turn)*SPEED_SP_GAIN;
 
-			if (state == REMOTE || state == TRACKING) {
-				float spL = speed_sp - (float)cmd.turn * SPEED_CMD_GAIN;
-				float spR = speed_sp + (float)cmd.turn * SPEED_CMD_GAIN;
-				trimL = (int32_t)lroundf(Pid_Update(&g_robot.left.ctrl.pid, spL, measL, dt));
-				trimR = (int32_t)lroundf(Pid_Update(&g_robot.right.ctrl.pid, spR, measR, dt));
-			}
-
-			static int32_t prev_outL, prev_outR;
-			int32_t targetL = balance + trimL;
-			int32_t targetR = balance + trimR;
-			int32_t outL = clamp(targetL, prev_outL);
-			int32_t outR = clamp(targetR, prev_outR);
-			prev_outL = outL;
-			prev_outR = outR;
-
-			PWM_Write(&g_robot.left, outL);
-			PWM_Write(&g_robot.right, outR);
+			Motor_Update(&g_robot, spL, measL, spR, measR, dt);
 
 			HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
 
-		    osDelay(2);
+		    osDelay(5);
 	    }
 }
+
+
+//static void Motor_Task(void* arg){
+//	//Test only dont touch it
+//	for(;;){
+//	PWM_Write(&g_robot.left,5);
+//	PWM_Write(&g_robot.right,5);
+//	osDelay(50);
+//	}
+////	osDelay(5000);
+//}
 /*============Task End================*/
 
 

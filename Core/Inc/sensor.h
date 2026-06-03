@@ -41,8 +41,7 @@ typedef struct MPU6050Data_T{
 }MPU6050Data_T;
 
 typedef struct SensorData_t{
-	float          pitch;       /* complementary-filtered pitch angle (deg) */
-	float          gyro_dps;    /* raw gyro Y angular velocity (°/s), for D-term */
+	float          pitch;    /* complementary-filtered pitch angle (deg) */
 	MPU6050Data_T  mpu;
 	EncData_T      enc;
 	CS100AData_T   csa;
