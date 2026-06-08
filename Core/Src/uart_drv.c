@@ -19,7 +19,18 @@ void UartDma_Init(UartDma_Rx *u, UART_HandleTypeDef *huart,
 	if (g_rx_cnt < MAX_UART_RX)
 		g_rx[g_rx_cnt++] = u;
 
-	HAL_UARTEx_ReceiveToIdle_DMA(huart, dma_buf, buf_size);
+	/* Clear stale FE/NE before starting DMA to avoid IDLE being lost */
+	{
+		uint32_t sr = huart->Instance->SR;
+		if (sr & (USART_SR_FE | USART_SR_NE))
+			(void)huart->Instance->DR;
+	}
+
+	HAL_StatusTypeDef rc = HAL_UARTEx_ReceiveToIdle_DMA(huart, dma_buf, buf_size);
+	if (rc != HAL_OK) {
+		__disable_irq();
+		while (1) {}
+	}
 }
 
 static void UartDma_OnRxEvent(UART_HandleTypeDef *huart, uint16_t len)
