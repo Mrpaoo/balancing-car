@@ -16,10 +16,6 @@ static UartDma_Rx  g_vision_uart;
  * HEADER | TYPE | X | Y | CHK | END
  * 0xAA   | 0x01 | X | Y | CHK | 0x55
  *
- * X/Y are int8 command values.
- * Only X is used for turn control.
- * Y is kept for checksum compatibility but ignored by control logic.
- *
  * CHK = TYPE ^ X ^ Y
  */
 static void vision_parse_one_frame(uint8_t *data)
