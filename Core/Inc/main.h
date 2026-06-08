@@ -81,12 +81,14 @@ void Error_Handler(void);
 #define M2_ENC_B_GPIO_Port GPIOD
 #define M2_ENC_A_Pin GPIO_PIN_13
 #define M2_ENC_A_GPIO_Port GPIOD
-#define TFT_DC_Pin GPIO_PIN_5
+#define TFT_DC_Pin GPIO_PIN_6
 #define TFT_DC_GPIO_Port GPIOG
 #define CS100A_ECHO_Pin GPIO_PIN_6
 #define CS100A_ECHO_GPIO_Port GPIOC
 #define CS100A_TRIG_Pin GPIO_PIN_7
 #define CS100A_TRIG_GPIO_Port GPIOC
+#define ESP_IO_Pin GPIO_PIN_9
+#define ESP_IO_GPIO_Port GPIOC
 #define PWM_L2_Pin GPIO_PIN_8
 #define PWM_L2_GPIO_Port GPIOA
 #define PWM_R2_Pin GPIO_PIN_9

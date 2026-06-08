@@ -22,8 +22,17 @@ float Pid_Update(Pid_t* pid, float setpoint, float measurement, float dt_sec)
         pid->integral += err * dt_sec;
         pid->integral = clampf(pid->integral, -pid->integral_limit, pid->integral_limit);
 
-        float der = (err - pid->prev_error) / dt_sec;
-        pid->prev_error = err;
+        #define DER_LPF_ALPHA  0.10f   /* gyro D-term LPF: cutoff ~8Hz@100Hz */
+        float der;
+        if (pid->use_direct_deriv) {
+            pid->der_filtered += DER_LPF_ALPHA * (pid->direct_deriv - pid->der_filtered);
+            der = pid->der_filtered;
+        } else {
+            float raw_der = (err - pid->prev_error) / dt_sec;
+            pid->prev_error = err;
+            pid->der_filtered += DER_LPF_ALPHA * (raw_der - pid->der_filtered);
+            der = pid->der_filtered;
+        }
 
         pid->output = pid->Kp * err + pid->Ki * pid->integral + pid->Kd * der;
     }
@@ -62,12 +71,17 @@ float Pid_Update(Pid_t* pid, float setpoint, float measurement, float dt_sec)
     pid->integral_limit = ANGLE_INTEGRAL_LIMIT;
     pid->output_max = ANGLE_OUTPUT_MAX;
     pid->output_min = ANGLE_OUTPUT_MIN;
+    pid->use_direct_deriv = 1;
     Pid_Reset(pid);
+    pid->use_direct_deriv = 1;  /* re-apply after reset */
 }
 
 void Pid_Reset(Pid_t* pid)
 {
    pid->integral = 0.0f;
    pid->prev_error = 0.0f;
+   pid->der_filtered = 0.0f;
    pid->output = 0.0f;
+   pid->direct_deriv = 0.0f;
+   pid->use_direct_deriv = 0;
 }

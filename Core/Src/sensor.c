@@ -70,19 +70,23 @@ static void ComplementaryFilter(MPU6050Data_T *mpu, float dt)
 	                  * 180.0f / (float)M_PI;
 
 	/* fuse: trust gyro 98%, accel 2% */
-	pitch_filtered = 0.98f * pitch_gyro + 0.02f * pitch_accel;
+	pitch_filtered = 0.985f * pitch_gyro + 0.015f * pitch_accel;
 }
 
-/* Called from TIM2 ISR: encoder only (fast, no blocking I2C) */
+#define SENSOR_DT  0.005f   /* TIM2 period = 5 ms */
+
+/* Called from TIM2 ISR: encoder + MPU6050 + complementary filter */
 void collect_data(SensorData_t* data){
 	Encoder_read(&data->enc);
+	// MPU6050 + filter moved to Sensor_Update() in thread context
 }
 
-/* Called from Motor Task thread: I2C read + filter (slow, blocking OK in thread) */
+/* Called from Motor Task thread: I2C read + complementary filter */
 void Sensor_Update(SensorData_t* data, float dt){
 	MPU6050_read(&data->mpu);
 	ComplementaryFilter(&data->mpu, dt);
-	data->pitch = pitch_filtered;
+	data->pitch    = pitch_filtered;
+	data->gyro_dps = (float)data->mpu.gyro_Y / GYRO_LSB_PER_DPS - gyro_bias_Y;
 }
 
 static void MPU6050_read(MPU6050Data_T* data){

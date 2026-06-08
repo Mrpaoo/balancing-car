@@ -32,7 +32,12 @@
 
 /* USER CODE END 1 */
 
-/** Configure pins
+/** Configure pins as
+        * Analog
+        * Input
+        * Output
+        * EVENT_OUT
+        * EXTI
 */
 void MX_GPIO_Init(void)
 {
@@ -57,7 +62,7 @@ void MX_GPIO_Init(void)
   HAL_GPIO_WritePin(TFT_DC_GPIO_Port, TFT_DC_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOC, CS100A_TRIG_Pin|ESP8266_RST_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOC, CS100A_TRIG_Pin|ESP_IO_Pin|ESP8266_RST_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pins : TFT_RES_Pin TFT_CS_Pin TFT_BL_Pin */
   GPIO_InitStruct.Pin = TFT_RES_Pin|TFT_CS_Pin|TFT_BL_Pin;
@@ -80,8 +85,8 @@ void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(TFT_DC_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : CS100A_TRIG_Pin ESP8266_RST_Pin */
-  GPIO_InitStruct.Pin = CS100A_TRIG_Pin|ESP8266_RST_Pin;
+  /*Configure GPIO pins : CS100A_TRIG_Pin ESP_IO_Pin ESP8266_RST_Pin */
+  GPIO_InitStruct.Pin = CS100A_TRIG_Pin|ESP_IO_Pin|ESP8266_RST_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;

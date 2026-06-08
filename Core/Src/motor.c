@@ -2,11 +2,9 @@
 #include"motor.h"
 #include<stdint.h>
 #include<math.h>
+#include<stdio.h>
 #include"global_def.h"
 #include"pidConfig.h"
-
-#define DEADZONE_DUTY    5    /* min |duty|% to overcome static friction */
-#define COAST_THRESHOLD  3    /* TEST: 0 = coast disabled */
 
 /*==========Global var Define===========*/
 static volatile uint8_t g_enable=0;
@@ -78,51 +76,6 @@ static void PWM_Write(const Motor_Unit *m, int32_t duty)
 	uint32_t compare = duty_to_compare(duty, m->hw.pwm_period);
 	__HAL_TIM_SET_COMPARE(m->hw.htim_pwm, m->hw.pwm_ch, compare);
 }
-
-static void Motor_Update(Robot_Ctx *r,
-                  float spL, float measL,
-                  float spR, float measR,
-                  float dt)
-{
-	Motor_Ctrl *cL = &r->left.ctrl;
-	Motor_Ctrl *cR = &r->right.ctrl;
-
-	int32_t targetL = (int32_t)lroundf(Pid_Update(&cL->pid, spL, measL, dt));
-	int32_t targetR = (int32_t)lroundf(Pid_Update(&cR->pid, spR, measR, dt));
-
-	int32_t outL = clamp(targetL, cL->prev_out);
-	int32_t outR = clamp(targetR, cR->prev_out);
-
-	cL->prev_out = outL;
-	cR->prev_out = outR;
-
-	/*=== Coast: below threshold → cut MOE, motor floats ===*/
-	static uint8_t coasting = 0;
-	int thresh = coasting ? COAST_THRESHOLD + 2 : COAST_THRESHOLD;
-	int should_coast = (outL > -thresh && outL < thresh)
-	                && (outR > -thresh && outR < thresh);
-
-	if (should_coast) {
-		htim1.Instance->BDTR &= ~TIM_BDTR_MOE;
-		coasting = 1;
-		return;
-	}
-	coasting = 0;
-
-	/* restore MOE before driving */
-	if (!(htim1.Instance->BDTR & TIM_BDTR_MOE)) {
-		htim1.Instance->BDTR |= TIM_BDTR_MOE;
-	}
-
-	/* dead-zone compensation: bump sub-threshold duty to min start voltage */
-	if (outL > 0 && outL < DEADZONE_DUTY) outL = DEADZONE_DUTY;
-	if (outL < 0 && outL > -DEADZONE_DUTY) outL = -DEADZONE_DUTY;
-	if (outR > 0 && outR < DEADZONE_DUTY) outR = DEADZONE_DUTY;
-	if (outR < 0 && outR > -DEADZONE_DUTY) outR = -DEADZONE_DUTY;
-
-	PWM_Write(&r->left,outL);
-	PWM_Write(&r->right,outR);
-}
 /*==========Motor Driver End============*/
 
 
@@ -153,20 +106,25 @@ static void Motor_Task(void* arg){
 			taskENTER_CRITICAL();
 			data = g_sensor_data;
 			taskEXIT_CRITICAL();
-
-			/* MPU6050 + filter in thread context (I2C is blocking, not safe in ISR) */
 			Sensor_Update(&data, dt);
 
-			/* encoder delta with wrap handling (collected by TIM2 ISR) */
+
+			/* encoder delta with wrap handling */
 			int16_t dL = (int16_t)(data.enc.enc_L - prev_enc_L);
 			int16_t dR = (int16_t)(data.enc.enc_R - prev_enc_R);
-			float measL = -(float)dL / dt;
-			float measR = (float)dR / dt;
+			float raw_measL = (float)dL / dt;
+			float raw_measR = -(float)dR / dt;
 			prev_enc_L = data.enc.enc_L;
 			prev_enc_R = data.enc.enc_R;
 
+			/* low-pass filter to suppress 1-count jitter at 200 Hz */
+			#define SPEED_LPF_ALPHA  0.03f
+			static float measL = 0.0f, measR = 0.0f;
+			measL += SPEED_LPF_ALPHA * (raw_measL - measL);
+			measR += SPEED_LPF_ALPHA * (raw_measR - measR);
+
 			/* CS100A trigger: fire every 60ms */
-			if (++cs100a_tick >= 6) {
+			if (++cs100a_tick >= 20) {
 				cs100a_tick = 0;
 				CS100A_Trigger();
 			}
@@ -189,45 +147,57 @@ static void Motor_Task(void* arg){
 				g_wifi_cmd.mode_request = 0;
 			}
 
-			/* Per-mode command logic */
+			/* Angle PD → PWM directly. Speed loop only for REMOTE/TRACKING trim. */
+			float speed_sp = 0.0f;
 			switch(state){
 			case IDLE:
 				break;
 			case BALANCE:
-				cmd.v = -Pid_Update(&g_angle_pid, 0.0f, data.pitch, dt);
+				g_angle_pid.direct_deriv = data.gyro_dps;
+				cmd.v = Pid_Update(&g_angle_pid, 0.0f, data.pitch, dt);
 				break;
 			case REMOTE:
-				cmd.v    = Pid_Update(&g_angle_pid, 0.0f, data.pitch, dt)
-				         + g_wifi_cmd.v;
+				g_angle_pid.direct_deriv = -data.gyro_dps;
+				cmd.v    = Pid_Update(&g_angle_pid, 0.0f, data.pitch, dt);
+				speed_sp = (float)g_wifi_cmd.v * SPEED_CMD_GAIN;
 				cmd.turn = g_wifi_cmd.turn;
 				break;
 			case TRACKING:
+				g_angle_pid.direct_deriv = -data.gyro_dps;
 				cmd.v    = Pid_Update(&g_angle_pid, 1.0f, data.pitch, dt);
 				cmd.turn = g_vision_cmd.turn;
 				if (distance_mm > 0 && distance_mm < 200.0f) {
-					cmd.v = 0;   /* obstacle brake: 20cm */
+					speed_sp = 0.0f;
 				}
 				break;
 			}
 
-			/* translate to per-wheel speed and drive */
-			float spL = (float)(cmd.v - cmd.turn)*SPEED_SP_GAIN;
-			float spR = (float)(cmd.v + cmd.turn)*SPEED_SP_GAIN;
+			int32_t balance = (int32_t)lroundf(cmd.v);
+			int32_t trimL = 0, trimR = 0;
 
-			Motor_Update(&g_robot, spL, measL, spR, measR, dt);
+			if (state == REMOTE || state == TRACKING) {
+				float spL = speed_sp - (float)cmd.turn * SPEED_CMD_GAIN;
+				float spR = speed_sp + (float)cmd.turn * SPEED_CMD_GAIN;
+				trimL = (int32_t)lroundf(Pid_Update(&g_robot.left.ctrl.pid, spL, measL, dt));
+				trimR = (int32_t)lroundf(Pid_Update(&g_robot.right.ctrl.pid, spR, measR, dt));
+			}
+
+			static int32_t prev_outL, prev_outR;
+			int32_t targetL = balance + trimL;
+			int32_t targetR = balance + trimR;
+			int32_t outL = clamp(targetL, prev_outL);
+			int32_t outR = clamp(targetR, prev_outR);
+			prev_outL = outL;
+			prev_outR = outR;
+
+			PWM_Write(&g_robot.left, outL);
+			PWM_Write(&g_robot.right, outR);
 
 			HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
 
-		    osDelay(10);
+		    osDelay(2);
 	    }
 }
-
-//static void Motor_Task(void* arg){
-//	//Test only dont touch it
-//	PWM_Write(&g_robot.left,30);
-//	PWM_Write(&g_robot.right,30);
-//	osDelay(5000);
-//}
 /*============Task End================*/
 
 

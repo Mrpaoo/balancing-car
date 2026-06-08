@@ -33,6 +33,7 @@
 #include "global_def.h"
 #include "remote_ctrl.h"
 #include<string.h>
+#include "lcd.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -53,9 +54,9 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
-SensorData_t g_sensor_data;
-volatile Wifi_Cmd   g_wifi_cmd;
-volatile Move_Cmd   g_vision_cmd;
+SensorData_t g_sensor_data = {0};
+volatile Wifi_Cmd   g_wifi_cmd = {0};
+volatile Move_Cmd   g_vision_cmd = {0};
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -101,10 +102,7 @@ int main(void)
 {
 
   /* USER CODE BEGIN 1 */
-  /* Cold-boot insurance: explicitly zero globals in case .bss init is flaky */
-  memset(&g_sensor_data, 0, sizeof(g_sensor_data));
-  memset((void*)&g_wifi_cmd, 0, sizeof(g_wifi_cmd));
-  memset((void*)&g_vision_cmd, 0, sizeof(g_vision_cmd));
+
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -136,7 +134,8 @@ int main(void)
   MX_TIM4_Init();
   MX_SPI4_Init();
   /* USER CODE BEGIN 2 */
-
+  LCD_Init();
+  LCD_Clear(BLACK);
 
   System_Init();
   /* USER CODE END 2 */

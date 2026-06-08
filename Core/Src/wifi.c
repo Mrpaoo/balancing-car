@@ -90,7 +90,7 @@ static void wifi_on_frame(uint8_t *data, uint16_t len)
 
 void Wifi_Init(void)
 {
-	UartDma_Init(&g_wifi_uart, &huart3,
-	             dma_buf, frame_buf, WIFI_BUF_SIZE,
-	             wifi_on_frame);
+    UartDma_Init(&g_wifi_uart, &huart3,
+                 dma_buf, frame_buf, WIFI_BUF_SIZE,
+                 wifi_on_frame);
 }
