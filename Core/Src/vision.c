@@ -44,9 +44,6 @@ static void vision_on_frame(uint8_t *data, uint16_t len)
      * - multiple frames stuck together
      * - noise before a valid frame
      *
-     * Therefore we scan the received buffer and parse every valid frame.
-     * If multiple valid frames exist, the later one naturally overwrites
-     * the previous command, leaving g_vision_cmd.turn with the newest value.
      */
     for (uint16_t i = 0; i + 5 < len; i++) {
         if (data[i] != HEADER)
