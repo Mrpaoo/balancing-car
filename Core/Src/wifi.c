@@ -90,6 +90,17 @@ static void wifi_on_frame(uint8_t *data, uint16_t len)
 
 void Wifi_Init(void)
 {
+    /* PC11 pull-up for USART3 RX */
+    GPIOC->PUPDR = (GPIOC->PUPDR & ~(3UL << 22)) | (1UL << 22);
+
+    /* ESP8266 boot: IO high, RST pulse */
+    HAL_GPIO_WritePin(ESP_IO_GPIO_Port, ESP_IO_Pin, GPIO_PIN_SET);
+    HAL_GPIO_WritePin(ESP8266_RST_GPIO_Port, ESP8266_RST_Pin, GPIO_PIN_RESET);
+    HAL_Delay(100);
+    HAL_GPIO_WritePin(ESP8266_RST_GPIO_Port, ESP8266_RST_Pin, GPIO_PIN_SET);    /* RST high */
+    HAL_Delay(100);   /* wait for ESP8266 Wi-Fi connect + DHCP */
+
+    /* Start DMA after ESP is booted to avoid baud mismatch noise */
     UartDma_Init(&g_wifi_uart, &huart3,
                  dma_buf, frame_buf, WIFI_BUF_SIZE,
                  wifi_on_frame);
