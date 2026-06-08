@@ -38,10 +38,6 @@ static void vision_parse_one_frame(uint8_t *data)
 
     g_vision_cmd.turn = (int32_t)x * RC_SPEED_SCALE;
 
-    /*
-     * Y is intentionally ignored.
-     * Do not update g_vision_cmd.v here.
-     */
 }
 
 static void vision_on_frame(uint8_t *data, uint16_t len)
